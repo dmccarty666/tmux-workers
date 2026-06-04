@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+.ruff_cache/
+.mypy_cache/
+
+# Logs
+logs/
+*.log
+
+# Workspace data
+workspaces/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+
+# Local dev
+*.local
+.tmp/
