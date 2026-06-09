@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tmux Workers</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2a2d3a;
+    --text: #e4e4e7;
+    --muted: #71717a;
+    --green: #22c55e;
+    --yellow: #eab308;
+    --red: #ef4444;
+    --blue: #3b82f6;
+    --purple: #a855f7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; padding: 20px; }
+  h1 { font-size: 1.5rem; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; }
+  h1 span { font-size: 1.2rem; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+  .badge-idle { background: #1a1d27; color: var(--muted); }
+  .badge-working { background: #1a2e1a; color: var(--green); }
+  .badge-done { background: #1a2e1a; color: var(--green); }
+  .badge-blocked { background: #2a2200; color: var(--yellow); }
+  .badge-dead { background: #2a1010; color: var(--red); }
+  .badge-queued { background: #1a1a2e; color: var(--blue); }
+  .badge-failed { background: #2a1010; color: var(--red); }
+  .badge-revision { background: #2a1a2e; color: var(--purple); }
+
+  /* Story badge */
+  .story-badge { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; background: #1a2e1a; color: var(--green); }
+  .project-badge { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; background: #1a1a2e; color: var(--blue); }
+  .task-id { font-family: 'Consolas', 'Monaco', monospace; font-size: 0.75rem; color: var(--blue); }
+  .display-name { font-weight: 600; font-size: 0.9rem; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 16px; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .panel h2 { font-size: 0.9rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  .panel .count { float: right; font-size: 1.1rem; font-weight: 700; color: var(--text); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  td { padding: 8px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .mono { font-family: 'Consolas', 'Monaco', monospace; font-size: 0.8rem; color: var(--blue); }
+  .age { color: var(--muted); font-size: 0.8rem; }
+  .summary { max-width: 300px; color: var(--text); line-height: 1.4; }
+  .artifact { display: block; font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+  .status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .empty { color: var(--muted); font-style: italic; font-size: 0.85rem; padding: 8px 0; }
+
+  /* Action buttons */
+  .actions { display: flex; gap: 6px; margin-top: 8px; }
+  button { padding: 4px 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.8rem; }
+  button:hover { background: var(--border); }
+  button.danger { color: var(--red); border-color: var(--red); }
+  button.danger:hover { background: #2a1010; }
+  button.success { color: var(--green); border-color: var(--green); }
+  button.success:hover { background: #1a2e1a; }
+
+  .header-actions { display: flex; gap: 8px; margin-bottom: 16px; }
+  .header-actions button { padding: 6px 14px; font-size: 0.85rem; }
+
+  /* Task form */
+  #task-form { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+  #task-form h2 { font-size: 0.9rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+  .form-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  input, textarea { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); padding: 8px 12px; font-size: 0.85rem; width: 100%; }
+  input:focus, textarea:focus { outline: none; border-color: var(--blue); }
+  textarea { resize: vertical; min-height: 80px; }
+  .btn-primary { background: var(--blue); border-color: var(--blue); color: white; padding: 8px 20px; font-weight: 600; }
+  .btn-primary:hover { background: #2563eb; }
+
+  #refresh-status { font-size: 0.8rem; color: var(--muted); margin-left: 12px; }
+</style>
+</head>
+<body>
+<h1>
+  <span>🟢</span> Tmux Workers
+  <span id="refresh-status">loading...</span>
+</h1>
+
+<!-- New task form -->
+<div id="task-form">
+  <h2>Assign New Task</h2>
+  <div class="form-row">
+    <input type="text" id="task-title" placeholder="Task title" style="flex:1">
+  </div>
+  <div class="form-row">
+    <input type="text" id="task-project" placeholder="Project (optional)" style="flex:1">
+    <input type="text" id="task-story" placeholder="Story ID (optional)" style="flex:1">
+  </div>
+  <div class="form-row">
+    <textarea id="task-body" placeholder="Task description / instructions..."></textarea>
+  </div>
+  <div class="form-row">
+    <input type="text" id="task-goal" placeholder="Goal (optional — success criteria)" style="flex:2">
+    <input type="number" id="task-goal-turns" placeholder="Max turns" value="5" min="1" max="20" style="flex:0.5">
+  </div>
+  <div class="form-row">
+    <button class="btn-primary" onclick="submitTask()">Spawn Worker</button>
+  </div>
+</div>
+
+<div class="grid">
+  <!-- Sessions -->
+  <div class="panel">
+    <h2>Sessions <span class="count" id="sessions-count">0</span>
+      <span style="float:right;font-size:0.7rem;font-weight:400">
+        <button onclick="filterSessions('all')" class="badge badge-idle" style="cursor:pointer">all</button>
+        <button onclick="filterSessions('alive')" class="badge badge-working" style="cursor:pointer">alive</button>
+        <button onclick="filterSessions('done')" class="badge badge-done" style="cursor:pointer">done</button>
+        <button onclick="filterSessions('dead')" class="badge badge-dead" style="cursor:pointer">dead</button>
+      </span>
+    </h2>
+    <div id="sessions-list"></div>
+  </div>
+
+  <!-- Queue -->
+  <div class="panel">
+    <h2>Queue <span class="count" id="queue-count">0</span></h2>
+    <div id="queue-list"></div>
+  </div>
+
+  <!-- Completed -->
+  <div class="panel">
+    <h2>Completed (Recent 20) <span class="count" id="completed-count">0</span></h2>
+    <div id="completed-list"></div>
+  </div>
+
+  <!-- History -->
+  <div class="panel">
+    <h2>Full History</h2>
+    <div id="history-list"></div>
+  </div>
+</div>
+
+<script>
+const API = '/api/tmux-workers';
+
+function fmt(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  return d.toLocaleString();
+}
+
+function age(dateStr) {
+  if (!dateStr) return '—';
+  const sec = Math.floor((Date.now() - new Date(dateStr)) / 1000);
+  if (sec < 60) return `${sec}s ago`;
+  if (sec < 3600) return `${Math.floor(sec/60)}m ago`;
+  if (sec < 86400) return `${Math.floor(sec/3600)}h ago`;
+  return `${Math.floor(sec/86400)}d ago`;
+}
+
+let sessionFilter = 'all';
+
+function statusBadge(status) {
+  return `<span class="badge badge-${status}">${status}</span>`;
+}
+
+function filterSessions(f) { sessionFilter = f; load(); }
+
+function attachSession(sessionId) {
+  const name = sessionId.startsWith('worker-') ? sessionId : 'worker-' + sessionId.substring(0, 8);
+  const cmd = `tmux attach -t ${name}`;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(cmd).then(() => alert(`Copied! Run in terminal:\\n${cmd}`));
+  } else {
+    prompt('Run this in terminal:', cmd);
+  }
+}
+
+async function load() {
+  try {
+    const r = await fetch(API);
+    if (!r.ok) throw new Error('API not available');
+    const data = await r.json();
+    render(data);
+    document.getElementById('refresh-status').textContent = `last updated: ${new Date().toLocaleTimeString()}`;
+  } catch(e) {
+    document.getElementById('refresh-status').textContent = 'dashboard polling... (api not yet registered)';
+    // Fallback: try direct DB query endpoint
+    try {
+      const r2 = await fetch('/api/tmux-workers/status');
+      if (r2.ok) {
+        const data = await r2.json();
+        renderFallback(data);
+      }
+    } catch {}
+  }
+}
+
+function render(data) {
+  // Sessions (filtered)
+  const allSessions = data.sessions || [];
+  const sessions = sessionFilter === 'all' ? allSessions :
+    sessionFilter === 'alive' ? allSessions.filter(s => s.status === 'working') :
+    allSessions.filter(s => s.status === sessionFilter);
+  document.getElementById('sessions-count').textContent = sessions.length;
+  const sl = document.getElementById('sessions-list');
+  if (!sessions.length) {
+    sl.innerHTML = '<div class="empty">No sessions matching filter</div>';
+  } else {
+    sl.innerHTML = `<table><thead><tr><th>Session</th><th>Display Name</th><th>Status</th><th>Age</th><th>Actions</th></tr></thead><tbody>` +
+      sessions.map(s => `
+        <tr>
+          <td><span class="task-id">${s.id}</span></td>
+          <td>${s.task_id ? `<span class="task-id">${s.task_id}</span>` : '—'}</td>
+          <td>${statusBadge(s.status)}</td>
+          <td><span class="age">${age(s.heartbeat_at)}</span></td>
+          <td>
+            <button onclick="attachSession('${s.id}')">attach</button>
+            <button class="danger" onclick="killSession('${s.id}')">kill</button>
+          </td>
+        </tr>`).join('') + '</tbody></table>';
+  }
+
+  // Queue
+  const tasks = data.tasks || [];
+  const queued = tasks.filter(t => t.status === 'queued');
+  document.getElementById('queue-count').textContent = queued.length;
+  const ql = document.getElementById('queue-list');
+  if (!queued.length) {
+    ql.innerHTML = '<div class="empty">Queue empty</div>';
+  } else {
+    ql.innerHTML = `<table><thead><tr><th>Task ID</th><th>Display Name</th><th>Context</th><th>Created</th></tr></thead><tbody>` +
+      queued.map(t => `
+        <tr>
+          <td><span class="task-id">${t.id}</span></td>
+          <td><span class="display-name">${t.display_name || t.title}</span></td>
+          <td>${t.story_id ? `<span class="story-badge">${t.story_id}</span>` : t.project ? `<span class="project-badge">${t.project}</span>` : '—'}</td>
+          <td><span class="age">${age(t.created_at)}</span></td>
+        </tr>`).join('') + '</tbody></table>';
+  }
+
+  // Completed
+  const done = tasks.filter(t => t.status === 'done').slice(-20).reverse();
+  document.getElementById('completed-count').textContent = done.length;
+  const cl = document.getElementById('completed-list');
+  if (!done.length) {
+    cl.innerHTML = '<div class="empty">No completed tasks yet</div>';
+  } else {
+    cl.innerHTML = `<table><thead><tr><th>Task ID</th><th>Display Name</th><th>Context</th><th>Completed</th><th>Summary</th></tr></thead><tbody>` +
+      done.map(t => `
+        <tr>
+          <td><span class="task-id">${t.id}</span></td>
+          <td><span class="display-name">${t.display_name || t.title}</span></td>
+          <td>${t.story_id ? `<span class="story-badge">${t.story_id}</span>` : t.project ? `<span class="project-badge">${t.project}</span>` : '—'}</td>
+          <td><span class="age">${age(t.completed_at)}</span></td>
+          <td><span class="summary">${t.result_summary || '—'}</span></td>
+        </tr>`).join('') + '</tbody></table>';
+  }
+
+  // History
+  const hist = data.history || [];
+  const hl = document.getElementById('history-list');
+  if (!hist.length) {
+    hl.innerHTML = '<div class="empty">No events yet</div>';
+  } else {
+    hl.innerHTML = `<table><thead><tr><th>When</th><th>Task</th><th>Event</th><th>Detail</th></tr></thead><tbody>` +
+      hist.slice(-50).reverse().map(h => `
+        <tr>
+          <td><span class="age">${age(h.at)}</span></td>
+          <td>${h.task_id ? `<span class="mono">${h.task_id}</span>` : '—'}</td>
+          <td>${statusBadge(h.event)}</td>
+          <td><span class="summary">${h.detail || ''}</span></td>
+        </tr>`).join('') + '</tbody></table>';
+  }
+}
+
+function renderFallback(data) {
+  // Minimal fallback when API not yet wired
+  document.getElementById('sessions-list').innerHTML = '<div class="empty">API not available yet — start dispatcher</div>';
+}
+
+async function submitTask() {
+  const title = document.getElementById('task-title').value.trim();
+  const body = document.getElementById('task-body').value.trim();
+  const project = document.getElementById('task-project').value.trim() || null;
+  const story_id = document.getElementById('task-story').value.trim() || null;
+  const goal = document.getElementById('task-goal').value.trim() || null;
+  const goal_max_turns = parseInt(document.getElementById('task-goal-turns').value) || 5;
+  if (!title || !body) { alert('Title and body required'); return; }
+
+  const r = await fetch(API + '/enqueue', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({title, body, project, story_id, goal, goal_max_turns})
+  });
+
+  if (r.ok) {
+    const result = await r.json();
+    document.getElementById('task-title').value = '';
+    document.getElementById('task-body').value = '';
+    document.getElementById('task-project').value = '';
+    document.getElementById('task-story').value = '';
+    load();
+  } else if (r.status === 429) {
+    const err = await r.json();
+    alert(`Queue full: ${err.message}`);
+  } else {
+    alert('Failed to enqueue task: ' + await r.text());
+  }
+}
+
+async function attachSession(session) {
+  // Open tmux attach in new window — served as a link
+  window.open(`tmux:attach -t ${session}`, '_blank');
+}
+
+async function killSession(session) {
+  if (!confirm(`Kill session ${session}?`)) return;
+  await fetch(API + `/sessions/${encodeURIComponent(session)}/kill`, {method: 'POST'});
+  load();
+}
+
+async function startDispatcher() {
+  await fetch(API + '/dispatcher/start', {method: 'POST'});
+  load();
+}
+
+async function startWebhook() {
+  await fetch(API + '/webhook/start', {method: 'POST'});
+  load();
+}
+
+// Poll every 10s
+setInterval(load, 10000);
+load();
+</script>
+</body>
+</html>
