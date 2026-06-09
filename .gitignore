@@ -4,13 +4,26 @@ __pycache__/
 *.pyc
 .ruff_cache/
 .mypy_cache/
+.pytest_cache/
+
+# Runtime state (regenerated on first launcher start)
+db/state.db
+db/state.db-journal
+db/state.db-shm
+db/state.db-wal
+
+# Queue and completion files (runtime)
+queue/*.json
+queue/completions/
+!queue/.gitkeep
 
 # Logs
 logs/
 *.log
 
-# Workspace data
+# Workspace data (per-task artifacts, gitignored by design)
 workspaces/
+workspaces/**/*
 
 # Environment
 .env
@@ -20,10 +33,21 @@ workspaces/
 .vscode/
 .idea/
 *.swp
+*.swo
 
 # OS
 .DS_Store
+Thumbs.db
 
 # Local dev
 *.local
 .tmp/
+.cache/
+
+# Test artifacts
+.coverage
+htmlcov/
+.tox/
+*.egg-info/
+build/
+dist/
