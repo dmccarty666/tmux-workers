@@ -526,6 +526,10 @@ class CombinedHandler(SimpleHTTPRequestHandler):
         slug = data.get("slug")
         goal = data.get("goal", "")
         goal_max_turns = int(data.get("goal_max_turns", 5))
+        # Optional explicit task_type override. Valid: "nl" or "bash".
+        # Anything else (including empty) falls back to is_bash_body() heuristic.
+        task_type_raw = (data.get("task_type") or "").strip().lower()
+        task_type = task_type_raw if task_type_raw in ("nl", "bash") else ""
 
         # ── Secrets scan ──────────────────────────────────────────────────
         secret_types = scrub_secrets(body_text)
@@ -562,7 +566,8 @@ class CombinedHandler(SimpleHTTPRequestHandler):
             "task_id": task_id, "title": title, "body": body_text,
             "project": project, "story_id": story_id, "slug": slug_used,
             "display_name": display_name, "seq": seq,
-            "goal": goal, "goal_max_turns": goal_max_turns
+            "goal": goal, "goal_max_turns": goal_max_turns,
+            "task_type": task_type
         }))
 
         # Insert into DB with all metadata

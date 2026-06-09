@@ -34,13 +34,15 @@ def get_db():
     return sqlite3.connect(DB_PATH)
 
 
-def cmd_enqueue(title, body, project=None, story_id=None, slug=None):
+def cmd_enqueue(title, body, project=None, story_id=None, slug=None, task_type=None):
     """Enqueue a new task via the launcher's REST API (uses naming convention).
     Falls back to direct queue-file write if launcher is unreachable."""
     import urllib.request, urllib.error
 
     url = "http://localhost:9876/api/tmux-workers/enqueue"
     payload = {"title": title, "body": body, "project": project, "story_id": story_id, "slug": slug}
+    if task_type:
+        payload["task_type"] = task_type
     data = json.dumps(payload).encode()
 
     try:
@@ -84,7 +86,8 @@ def cmd_enqueue(title, body, project=None, story_id=None, slug=None):
     task_file.write_text(json.dumps({
         "task_id": task_id, "title": title, "body": body,
         "project": project, "story_id": story_id, "slug": slug_used,
-        "display_name": display_name, "seq": seq
+        "display_name": display_name, "seq": seq,
+        "task_type": task_type or ""
     }))
 
     c = conn.cursor()
@@ -257,6 +260,9 @@ def main():
     p_enqueue.add_argument("body", help="Task body/description", nargs="+")
     p_enqueue.add_argument("--project", "-p", help="Project name (e.g. financial-agent)")
     p_enqueue.add_argument("--story", "-s", help="Story ID (e.g. F-1.1, bug-47)")
+    p_enqueue.add_argument("--type", "-t", choices=["nl", "bash"],
+                           help="Execution mode override. nl=LLM agent, bash=shell script. "
+                                "If omitted, bootstrap.sh auto-detects (20-line heuristic).")
     
     p_attach = sub.add_parser("attach", help="Attach to session")
     p_attach.add_argument("session", help="Session name")
@@ -279,7 +285,7 @@ def main():
     elif args.cmd == "enqueue":
         title = args.title
         body = " ".join(args.body)
-        cmd_enqueue(title, body, project=args.project, story_id=args.story)
+        cmd_enqueue(title, body, project=args.project, story_id=args.story, task_type=args.type)
     elif args.cmd == "attach":
         cmd_attach(args.session)
     elif args.cmd == "kill":
