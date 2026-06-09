@@ -28,6 +28,9 @@ TASK_TITLE=$(python3 -c "import json,sys; d=json.load(open('$QUEUE_DIR/$TASK_ID.
 STORY_ID=$(python3 -c "import json,sys; d=json.load(open('$QUEUE_DIR/$TASK_ID.json')); print(d.get('story_id',''))" 2>/dev/null || echo "")
 GOAL=$(python3 -c "import json,sys; d=json.load(open('$QUEUE_DIR/$TASK_ID.json')); print(d.get('goal',''))" 2>/dev/null || echo "")
 GOAL_MAX_TURNS=$(python3 -c "import json,sys; d=json.load(open('$QUEUE_DIR/$TASK_ID.json')); print(d.get('goal_max_turns',5))" 2>/dev/null || echo "5")
+# Optional explicit task_type override ("nl" or "bash"); empty = auto-detect.
+# Use this to bypass is_bash_body()'s 20-line heuristic for long NL prompts.
+TASK_TYPE_OVERRIDE=$(python3 -c "import json,sys; d=json.load(open('$QUEUE_DIR/$TASK_ID.json')); print(d.get('task_type',''))" 2>/dev/null || echo "")
 
 # -- Write workspace files ---------------------------------------------
 echo "task_id=$TASK_ID" >> "$WORKSPACE/.meta"
@@ -44,7 +47,15 @@ is_bash_body() {
     [[ $(echo "$b" | wc -l) -gt 20 ]] && return 0
     return 1
 }
-is_bash_body "$TASK_BODY" && TASK_TYPE="bash" || TASK_TYPE="nl"
+# Resolve task type: explicit override wins, else heuristic
+case "$TASK_TYPE_OVERRIDE" in
+    nl|bash) TASK_TYPE="$TASK_TYPE_OVERRIDE" ;;
+    *)       is_bash_body "$TASK_BODY" && TASK_TYPE="bash" || TASK_TYPE="nl" ;;
+esac
+# Log the resolution path for debugging
+if [[ -n "$TASK_TYPE_OVERRIDE" ]]; then
+    echo "[$TASK_ID] task-type: $TASK_TYPE (override)" >> "$WORKSPACE/worker.log"
+fi
 
 # -- Logging — tee once; each line written exactly once to worker.log
 {

@@ -50,6 +50,14 @@ TOOLS = [
                 "model": {
                     "type": "string",
                     "description": "Optional model override (reserved for Hermes chat mode, currently unused)"
+                },
+                "task_type": {
+                    "type": "string",
+                    "enum": ["nl", "bash"],
+                    "description": "Optional execution-mode override. 'nl' = LLM-driven agent, "
+                                   "'bash' = run body as shell script. If omitted, bootstrap.sh "
+                                   "auto-detects (with a 20-line heuristic — set this explicitly "
+                                   "for NL prompts longer than 20 lines)."
                 }
             },
             "required": ["title", "task_body"]

@@ -46,7 +46,8 @@ def _api(path: str, method="GET", body=None):
 
 def spawn(title: str, task_body: str, model: Optional[str] = None,
           project: Optional[str] = None, story_id: Optional[str] = None,
-          slug: Optional[str] = None) -> dict:
+          slug: Optional[str] = None,
+          task_type: Optional[str] = None) -> dict:
     """
     Spawn a tmux worker for a task.
 
@@ -54,6 +55,9 @@ def spawn(title: str, task_body: str, model: Optional[str] = None,
         title: Human-readable task name
         task_body: What the worker should do (bash code or instruction text)
         model: Optional model override (not yet wired — reserved for Hermes chat mode)
+        task_type: Optional override for execution mode. "nl" (LLM-driven) or "bash"
+                   (script). Empty = use is_bash_body() heuristic. Use "nl" explicitly
+                   for prompts longer than 20 lines that the heuristic would misclassify.
 
     Returns:
         {"ok": True, "task_id": "...", "session": "...", "status": "enqueued"}
@@ -81,6 +85,8 @@ def spawn(title: str, task_body: str, model: Optional[str] = None,
         "story_id": story_id,
         "slug": slug
     }
+    if task_type:
+        body["task_type"] = task_type
 
     result = _api("/api/tmux-workers/enqueue", method="POST", body=body)
     if result is None:

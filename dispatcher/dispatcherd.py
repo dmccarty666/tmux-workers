@@ -106,9 +106,12 @@ def dispatch_task(conn, task_id):
     workspace = WORKSPACES_DIR / task_id
     workspace.mkdir(parents=True, exist_ok=True)
     
-    # Create tmux session name
-    session_id = f"worker-{task_id[:8]}"
-    
+    # Create tmux session name — use full task_id to avoid collision
+    # (Old code used f"worker-{task_id[:8]}" which truncated and caused
+    # 4-of-5 concurrent workers to collide on the same session name. See
+    # tmux-workers/references/multi-agent-roadmap-2026-06-09.md for history.)
+    session_id = task_id
+
     # Spawn tmux session
     cmd = [
         "tmux", "new-session", "-d", "-s", session_id,
