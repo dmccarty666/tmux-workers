@@ -62,8 +62,10 @@ def cmd_enqueue(title, body, project=None, story_id=None, slug=None, task_type=N
         if e.code == 429:
             # Capacity reached — launcher correctly rejected, but we can write
             # directly to queue so the task still gets dispatched when a slot opens.
-            body = json.loads(e.read())
-            print(f"[!] Workers at capacity ({body.get('active_workers')}/{body.get('max_workers')})")
+            # NOTE: use err_body (not body) to avoid shadowing the task body string,
+            # which the direct-write fallback below needs to bind to SQLite.
+            err_body = json.loads(e.read())
+            print(f"[!] Workers at capacity ({err_body.get('active_workers')}/{err_body.get('max_workers')})")
             print(f"    Queuing via fallback — will dispatch when slot opens")
         else:
             print(f"[!] HTTP {e.code}: {e.read().decode()}")

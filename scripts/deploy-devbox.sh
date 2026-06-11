@@ -629,6 +629,21 @@ phase_tmux_workers() {
         if [[ $DRY_RUN -eq 0 ]] && [[ -f "$tmux_dir/launcher.py" ]]; then
             ok "tmux-workers ready for $user at $tmux_dir"
         fi
+
+        # Install tmux-worker shim — bootstrap.sh hardcodes `tmux-worker chat`
+        # as the worker entry point. This 3-line shim delegates to
+        # `hermes -p tmux-worker "$@"` so the profile's SOUL is loaded.
+        # Without it, every NL worker fails with "tmux-worker: command not found".
+        local shim="$user_home/.local/bin/tmux-worker"
+        if [[ -x "$shim" ]]; then
+            ok "tmux-worker shim already installed for $user"
+        else
+            log "Installing tmux-worker shim for $user..."
+            if [[ $DRY_RUN -eq 0 ]]; then
+                mkdir_p "$user_home/.local/bin"
+                run sudo -u "$user" bash -c "printf '#!/bin/sh\nexec hermes -p tmux-worker \"\$@\"\n' > '$shim' && chmod 755 '$shim'"
+            fi
+        fi
     done
 }
 
