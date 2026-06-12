@@ -204,7 +204,13 @@ def main():
 
         if method == "initialize":
             send_message({"jsonrpc": "2.0", "id": msg_id, **handle_initialize(params)})
-            send_message({"jsonrpc": "2.0", "method": "notifications/initialized"})
+            # NOTE: We do NOT send `notifications/initialized` here. Per the MCP
+            # spec, that notification is sent by the CLIENT to the server (not
+            # the other direction). Sending it server->client triggers a
+            # `mcp.client.stdio: Failed to parse JSONRPCMessage` error in the
+            # Hermes MCP client because `ServerNotification` does not include
+            # the InitializedNotification variant. Fixed 2026-06-12 after
+            # gateway log showed 4 parse errors between 17:53 and 17:57.
         elif method == "tools/list":
             send_message({"jsonrpc": "2.0", "id": msg_id, "result": handle_list_tools(params)})
         elif method == "tools/call":
