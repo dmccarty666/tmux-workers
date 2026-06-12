@@ -203,14 +203,29 @@ def main():
         params = msg.get("params", {})
 
         if method == "initialize":
-            send_message({"jsonrpc": "2.0", "id": msg_id, **handle_initialize(params)})
+            # BUG FIX 2026-06-12: The initialize response MUST wrap the result
+            # in a `result` key per JSON-RPC 2.0 spec, not flatten it. The old
+            # code did {**handle_initialize(params)} which produced:
+            #   {"jsonrpc":"2.0","id":N,"protocolVersion":..., "capabilities":..., "serverInfo":...}
+            # which the Hermes MCP client could not parse (it tried to match
+            # each union member — Request, Notification, Response, Error — and
+            # all four failed because there was no `method`, no `result`, no
+            # `error`, and the message had an `id` so it could not be a
+            # Notification either). pydantic then dumped the dict in the error
+            # message showing `id: <full result dict>` (which is why the error
+            # log showed "id ends with manage lifecycle" — that was the
+            # truncated serverInfo.description field, not actually the id).
+            # Correct shape, matching the tools/list and tools/call handlers:
+            send_message({
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": handle_initialize(params),
+            })
             # NOTE: We do NOT send `notifications/initialized` here. Per the MCP
             # spec, that notification is sent by the CLIENT to the server (not
-            # the other direction). Sending it server->client triggers a
-            # `mcp.client.stdio: Failed to parse JSONRPCMessage` error in the
-            # Hermes MCP client because `ServerNotification` does not include
-            # the InitializedNotification variant. Fixed 2026-06-12 after
-            # gateway log showed 4 parse errors between 17:53 and 17:57.
+            # the other direction). Sending it server->client would also fail
+            # to parse (ServerNotification does not include
+            # InitializedNotification).
         elif method == "tools/list":
             send_message({"jsonrpc": "2.0", "id": msg_id, "result": handle_list_tools(params)})
         elif method == "tools/call":
